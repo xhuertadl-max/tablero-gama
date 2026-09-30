@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tablero de Control - Grupo Gama Impresores</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+    <style>
+        :root {
+            --primary: #1a365d;
+            --secondary: #3182ce;
+            --bg-color: #f0f2f5;
+            --card-bg: #ffffff;
+            --text-main: #2d3748;
+            --text-muted: #718096;
+            --success: #48bb78;
+            --warning: #ecc94b;
+            --danger: #f56565;
+        }
+        * { box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            margin: 0;
+            padding: 20px;
+        }
+        header { text-align: center; margin-bottom: 20px; }
+        h1 { color: var(--primary); margin: 0 0 5px 0; }
+        .subtitle { color: var(--text-muted); font-size: 1.1rem; }
+
+        .machine-nav {
+            display: flex; justify-content: center; gap: 12px;
+            flex-wrap: wrap; margin-bottom: 20px;
+        }
+        .machine-btn {
+            background: white; border: 2px solid #cbd5e1; color: var(--text-main);
+            padding: 10px 20px; font-size: 1rem; font-weight: 600;
+            border-radius: 8px; cursor: pointer; transition: all .2s ease;
+            box-shadow: 0 2px 4px rgba(0,0,0,.05);
+        }
+        .machine-btn:hover { border-color: var(--secondary); background: #eff6ff; }
+        .machine-btn.active {
+            background: var(--primary); color: white; border-color: var(--primary);
+            box-shadow: 0 4px 6px rgba(30,58,138,.2);
+        }
+        .machine-btn:focus-visible, .toolbar input:focus-visible, .toolbar button:focus-visible {
+            outline: 3px solid var(--secondary); outline-offset: 2px;
+        }
+
+        .dashboard-container { max-width: 1300px; margin: 0 auto; }
+
+        .toolbar {
+            display: flex; justify-content: space-between; align-items: center;
+            flex-wrap: wrap; gap: 12px; margin-bottom: 20px;
+            background: var(--card-bg); padding: 10px 16px; border-radius: 10px;
+            box-shadow: 0 2px 4px rgba(0,0,0,.05); font-size: .9rem;
+        }
+        .rango { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+        .toolbar label { color: var(--text-muted); }
+        .toolbar input[type="date"], .toolbar button {
+            padding: 6px 10px; border: 1px solid #cbd5e1; border-radius: 6px;
+            background: white; font-size: .9rem; font-family: inherit;
+        }
+        .toolbar button { cursor: pointer; }
+        .toolbar button:hover { border-color: var(--secondary); background: #eff6ff; }
+        .btn-rapido { padding: 6px 12px; }
+        #estadoCarga { color: var(--text-muted); margin-right: 8px; }
+
+        .alert-banner { padding: 12px 16px; border-radius: 8px; margin-bottom: 20px; font-weight: 600; }
+        .alert-banner.ok { background: #d1fae5; color: #065f46; }
+        .alert-banner.warn { background: #fef3c7; color: #92400e; }
+        .alert-banner.bad { background: #fee2e2; color: #991b1b; }
+
+        .section-title {
+            font-size: 1.3rem; font-weight: bold; color: var(--primary);
+            margin-bottom: 15px; border-left: 4px solid var(--secondary); padding-left: 10px;
+        }
+
+        .indicador {
+            display: inline-block; padding: 8px 14px; border-radius: 8px;
+            background: #e0ecf9; color: var(--primary); font-weight: 600;
+            margin-bottom: 18px; font-size: .95rem;
+        }
+        .indicador.aviso { background: #fef3c7; color: #92400e; }
+
+        .metrics-grid {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 20px; margin-bottom: 35px;
+        }
+        .metric-card {
+            background: var(--card-bg); padding: 20px; border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,.05); border-left: 6px solid #cbd5e1;
+        }
+        .metric-card.card-green { border-left-color: var(--success); }
+        .metric-card.card-yellow { border-left-color: var(--warning); }
+        .metric-card.card-red { border-left-color: var(--danger); }
+        .metric-card.card-na { border-left-color: #94a3b8; }
+        .metric-title { font-size: .95rem; color: var(--text-muted); font-weight: 600; text-transform: uppercase; }
+        .metric-value { font-size: 1.8rem; font-weight: bold; margin: 10px 0 5px 0; }
+        .metric-range { font-size: .8rem; color: var(--text-muted); margin-bottom: 8px; }
+        .metric-status { font-size: .85rem; font-weight: 600; padding: 3px 8px; border-radius: 4px; display: inline-block; }
+
+        .status-green { background: #d1fae5; color: #065f46; }
+        .status-yellow { background: #fef3c7; color: #92400e; }
+        .status-red { background: #fee2e2; color: #991b1b; }
+        .status-na { background: #f1f5f9; color: #475569; }
+
+        .charts-grid {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 480px), 1fr));
+            gap: 25px;
+        }
+        .chart-card {
+            background: var(--card-bg); padding: 20px; border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,.05); position: relative; height: 340px;
+        }
+        .no-data-msg {
+            text-align: center; padding: 40px; background: white; border-radius: 10px;
+            color: var(--text-muted); font-size: 1.1rem; box-shadow: 0 4px 6px rgba(0,0,0,.05);
+        }
+        .no-data-msg small { display: block; margin-top: 12px; color: #991b1b; word-break: break-word; }
+    </style>
+</head>
+<body>
+
+    <header>
+        <h1>Grupo Gama Impresores</h1>
+        <div class="subtitle">Tablero de Control - Solución de Fuente (Fountain Solution)</div>
+    </header>
+
+    <div class="dashboard-container">
+        <div class="machine-nav" id="menuMaquinas"></div>
+
+        <div class="toolbar">
+            <div class="rango">
+                <label for="fechaDesde">Desde</label>
+                <input type="date" id="fechaDesde">
+                <label for="fechaHasta">Hasta</label>
+                <input type="date" id="fechaHasta">
+                <button type="button" class="btn-rapido" data-preset="hoy">Hoy</button>
+                <button type="button" class="btn-rapido" data-preset="7">7 días</button>
+                <button type="button" class="btn-rapido" data-preset="30">30 días</button>
+                <button type="button" class="btn-rapido" data-preset="todo">Todo</button>
+            </div>
+            <div>
+                <span id="estadoCarga">Cargando datos...</span>
+                <button id="btnActualizar" type="button">Actualizar ahora</button>
+            </div>
+        </div>
+
+        <div id="contenidoTablero"><div class="no-data-msg">Cargando datos...</div></div>
+    </div>
+
+    <script>
+        // ================= CONFIGURACIÓN =================
+        const GOOGLE_SHEETS_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRtUJ6DkGKh4dZxJ4-nrsBpZTfdbsvwufc2Ke_81fuAaw38QhQ-3mngJleTSR-67SiSZvATvG-SCpWv/pub?gid=1623662749&single=true&output=csv';
+        const PROXIES = [
+            'https://api.allorigins.win/raw?url=',
+            'https://corsproxy.io/?'
+        ];
+        const TIEMPO_LIMITE_MS = 10000;          // 10 segundos por intento
+        const ACTUALIZAR_CADA_MS = 5 * 60 * 1000; // 5 minutos
+        const DIAS_RANGO_INICIAL = 30;
+
+        const MAQUINAS = ['XL-106', 'XL-10', 'R-506', 'R-707', 'R-709'];
+
+        const RANGOS_XL = {
+            conductividad: { min: 1400, max: 1800, warnMin: 1450, warnMax: 1750 },
+            ph:            { min: 4.8,  max: 5.2,  warnMin: 4.85, warnMax: 5.15 },
+            temperatura:   { min: 10,   max: 14,   warnMin: 10.5, warnMax: 13.5 },
+            alcohol:       { aplica: false }
+        };
+        const RANGOS_R = {
+            conductividad: { min: 1200, max: 1700, warnMin: 1250, warnMax: 1650 },
+            ph:            { min: 4.9,  max: 5.5,  warnMin: 5.0,  warnMax: 5.4 },
+            temperatura:   { min: 10,   max: 14,   warnMin: 10.5, warnMax: 13.5 },
+            alcohol:       { min: 4,    max: 6,    warnMin: 4.2,  warnMax: 5.8, aplica: true }
+        };
+        const limitesConfig = {
+            'XL-106': RANGOS_XL, 'XL-10': RANGOS_XL,
+            'R-506': RANGOS_R, 'R-707': RANGOS_R, 'R-709': RANGOS_R
+        };
+
+        const VARIABLES = [
+            { key: 'conductividad', titulo: 'Conductividad', unidad: '',    color: '#3182ce', fondo: 'rgba(49,130,206,.10)' },
+            { key: 'ph',            titulo: 'pH',            unidad: '',    color: '#38a169', fondo: 'rgba(56,161,105,.10)' },
+            { key: 'temperatura',   titulo: 'Temperatura',   unidad: ' °C', color: '#e53e3e', fondo: 'rgba(229,62,62,.10)' },
+            { key: 'alcohol',       titulo: 'Alcohol',       unidad: ' %',  color: '#805ad5', fondo: 'rgba(128,90,213,.10)' }
+        ];
+
+        // ================= ESTADO =================
+        let registros = [];
+        let maquinaActual = MAQUINAS[0];
+        let chartsInstance = {};
+        let rangoInicializado = false;
+
+        // ================= UTILIDADES =================
+        const normalizar = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+        const p2 = n => String(n).padStart(2, '0');
+
+        function parseNumero(v) {
+            if (v === null || v === undefined) return null;
+            const t = String(v).trim().replace(',', '.');
+            if (t === '') return null;
+            const n = parseFloat(t);
+            return Number.isFinite(n) ? n : null;
+        }
+
+        // Google Forms en español entrega dd/mm/aaaa hh:mm:ss
+        function parseFecha(txt) {
+            const m = String(txt || '').match(/(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?/);
+            if (m) return new Date(+m[3], +m[2] - 1, +m[1], +(m[4] || 0), +(m[5] || 0), +(m[6] || 0));
+            const d = new Date(txt);
+            return isNaN(d) ? null : d;
+        }
+
+        function etiquetaFecha(r) {
+            if (!r.fecha) return r.fechaTxt || '';
+            return p2(r.fecha.getDate()) + '/' + p2(r.fecha.getMonth() + 1) + ' ' + p2(r.fecha.getHours()) + ':' + p2(r.fecha.getMinutes());
+        }
+
+        // Fecha -> "aaaa-mm-dd" (formato del campo date), usando hora local
+        function aValorInput(d) {
+            return d.getFullYear() + '-' + p2(d.getMonth() + 1) + '-' + p2(d.getDate());
+        }
+
+        // "aaaa-mm-dd" -> "dd/mm/aaaa" para mostrar
+        function valorAVista(v) {
+            const [a, m, d] = v.split('-');
+            return d + '/' + m + '/' + a;
+        }
+
+        // ================= RANGO DE FECHAS =================
+        function leerRango() {
+            const vD = document.getElementById('fechaDesde').value;
+            const vH = document.getElementById('fechaHasta').value;
+            let desde = null, hasta = null;
+            if (vD) { const [a, m, d] = vD.split('-').map(Number); desde = new Date(a, m - 1, d, 0, 0, 0, 0); }
+            if (vH) { const [a, m, d] = vH.split('-').map(Number); hasta = new Date(a, m - 1, d, 23, 59, 59, 999); }
+            return { desde, hasta, vD, vH };
+        }
+
+        function aplicarPreset(preset) {
+            const iD = document.getElementById('fechaDesde');
+            const iH = document.getElementById('fechaHasta');
+            const hoy = new Date();
+            if (preset === 'todo') {
+                iD.value = ''; iH.value = '';
+            } else {
+                const dias = preset === 'hoy' ? 0 : parseInt(preset, 10) - 1;
+                const ini = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate() - dias);
+                iD.value = aValorInput(ini);
+                iH.value = aValorInput(hoy);
+            }
+            renderizarTablero();
+        }
+
+        // Se ejecuta solo la primera vez que llegan datos
+        function inicializarRango() {
+            if (rangoInicializado) return;
+            rangoInicializado = true;
+            const hoy = new Date();
+            const ini = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate() - (DIAS_RANGO_INICIAL - 1), 0, 0, 0);
+            const hayDatos = registros.some(r => r.fecha && r.fecha >= ini);
+            if (hayDatos) {
+                document.getElementById('fechaDesde').value = aValorInput(ini);
+                document.getElementById('fechaHasta').value = aValorInput(hoy);
+            }
+            // si no hay datos recientes, se dejan vacías las fechas (se muestra todo)
+        }
+
+        // ================= CARGA DE DATOS =================
+        async function fetchConTiempoLimite(url) {
+            // Temporizador sin AbortController (compatible con más entornos)
+            let timer;
+            const limite = new Promise((_, rechazar) => {
+                timer = setTimeout(() => rechazar(new Error('tardó demasiado')), TIEMPO_LIMITE_MS);
+            });
+            try {
+                const r = await Promise.race([fetch(url), limite]);
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                const texto = await Promise.race([r.text(), limite]);
+                if (texto.trim().toLowerCase().startsWith('<')) {
+                    throw new Error('Google devolvió una página web en lugar del CSV (revisa que la hoja esté publicada como CSV)');
+                }
+                return texto;
+            } finally {
+                clearTimeout(timer);
+            }
+        }
+
+        async function descargarCSV() {
+            const urlFresca = GOOGLE_SHEETS_URL + '&t=' + Date.now();
+            const intentos = [urlFresca].concat(PROXIES.map(p => p + encodeURIComponent(urlFresca)));
+            const errores = [];
+            for (let i = 0; i < intentos.length; i++) {
+                try {
+                    return await fetchConTiempoLimite(intentos[i]);
+                } catch (e) {
+                    const nombre = i === 0 ? 'directo' : 'proxy ' + i;
+                    errores.push(nombre + ': ' + (e.name === 'AbortError' ? 'tardó demasiado' : e.message));
+                    console.warn('Falló el intento (' + nombre + '):', e);
+                }
+            }
+            throw new Error(errores.join(' | '));
+        }
+
+        function limpiarFilas(filas, campos) {
+            const mapa = {};
+            campos.forEach(c => { mapa[normalizar(c)] = c; });
+            const col = nombre => mapa[normalizar(nombre)];
+
+            const cMaq = col('Máquina'), cFecha = col('Marca temporal');
+            const cCond = col('Conductividad'), cPh = col('pH');
+            const cTemp = col('Temperatura'), cAlc = col('Alcohol');
+
+            if (!cMaq) throw new Error('No se encontró la columna "Máquina". Columnas detectadas: ' + campos.join(', '));
+
+            const limpias = filas.map((f, i) => ({
+                orden: i,
+                maquina: String(f[cMaq] || '').trim().toUpperCase(),
+                fechaTxt: cFecha ? f[cFecha] : '',
+                fecha: cFecha ? parseFecha(f[cFecha]) : null,
+                conductividad: cCond ? parseNumero(f[cCond]) : null,
+                ph: cPh ? parseNumero(f[cPh]) : null,
+                temperatura: cTemp ? parseNumero(f[cTemp]) : null,
+                alcohol: cAlc ? parseNumero(f[cAlc]) : null
+            })).filter(r => r.maquina);
+
+            limpias.sort((a, b) => {
+                if (a.fecha && b.fecha && a.fecha - b.fecha !== 0) return a.fecha - b.fecha;
+                return a.orden - b.orden;
+            });
+            return limpias;
+        }
+
+        async function cargarDatos() {
+            const estado = document.getElementById('estadoCarga');
+            estado.textContent = 'Actualizando...';
+            try {
+                const texto = await descargarCSV();
+                const parsed = Papa.parse(texto, { header: true, skipEmptyLines: true });
+                registros = limpiarFilas(parsed.data, parsed.meta.fields || []);
+                inicializarRango();
+                const hora = new Date().toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' });
+                estado.textContent = 'Actualizado a las ' + hora;
+                renderizarTablero();
+            } catch (err) {
+                console.error(err);
+                estado.textContent = 'Error al actualizar';
+                if (registros.length === 0) {
+                    const c = document.getElementById('contenidoTablero');
+                    c.innerHTML = '<div class="no-data-msg"><strong>No se pudieron cargar los datos.</strong><br>' +
+                        'Verifica que la hoja esté publicada en la web como CSV y que haya internet.' +
+                        '<small id="detalleError"></small></div>';
+                    document.getElementById('detalleError').textContent = err.message;
+                }
+            }
+        }
+
+        // ================= LÓGICA =================
+        function evaluarSemaforo(val, cfg) {
+            if (val === null || val === undefined || isNaN(val)) return { texto: 'Sin datos', clase: 'na' };
+            if (val >= cfg.min && val <= cfg.max) {
+                if (val <= cfg.warnMin || val >= cfg.warnMax) return { texto: 'Cerca del límite - Vigilar', clase: 'yellow' };
+                return { texto: 'Dentro del rango ideal', clase: 'green' };
+            }
+            return { texto: val < cfg.min ? 'Por debajo del rango - Corregir' : 'Por encima del rango - Corregir', clase: 'red' };
+        }
+
+        // Regresión lineal ignorando huecos (null)
+        function calcularTendencia(valores) {
+            const pts = [];
+            valores.forEach((v, i) => { if (v !== null) pts.push([i, v]); });
+            if (pts.length < 2) return valores.map(() => null);
+            const n = pts.length;
+            let sx = 0, sy = 0, sxy = 0, sxx = 0;
+            pts.forEach(([x, y]) => { sx += x; sy += y; sxy += x * y; sxx += x * x; });
+            const den = n * sxx - sx * sx;
+            if (den === 0) return valores.map(() => null);
+            const m = (n * sxy - sx * sy) / den;
+            const b = (sy - m * sx) / n;
+            return valores.map((_, i) => Number((m * i + b).toFixed(2)));
+        }
+
+        function formatear(v) { return v === null ? 'N/D' : v; }
+
+        // ================= RENDER =================
+        function renderizarTablero() {
+            Object.values(chartsInstance).forEach(c => c && c.destroy());
+            chartsInstance = {};
+
+            const contenedor = document.getElementById('contenidoTablero');
+            const todos = registros.filter(r => r.maquina === maquinaActual.toUpperCase());
+
+            if (todos.length === 0) {
+                contenedor.innerHTML = '<div class="no-data-msg">No hay registros para la máquina ' + maquinaActual + '.</div>';
+                return;
+            }
+
+            const cfg = limitesConfig[maquinaActual];
+            const ultimo = todos[todos.length - 1];
+
+            // ---- Filtro por rango de fechas ----
+            const { desde, hasta, vD, vH } = leerRango();
+            const rangoInvalido = desde && hasta && desde > hasta;
+            const sinFechas = todos.every(r => !r.fecha);
+            let datos;
+            if (rangoInvalido || sinFechas) {
+                datos = rangoInvalido ? [] : todos;
+            } else {
+                datos = todos.filter(r => r.fecha && (!desde || r.fecha >= desde) && (!hasta || r.fecha <= hasta));
+            }
+
+            // ---- Texto del indicador ----
+            let textoRango;
+            if (vD && vH) textoRango = 'del ' + valorAVista(vD) + ' al ' + valorAVista(vH);
+            else if (vD) textoRango = 'desde el ' + valorAVista(vD);
+            else if (vH) textoRango = 'hasta el ' + valorAVista(vH);
+            else textoRango = 'de todas las fechas';
+
+            let indicador;
+            if (rangoInvalido) {
+                indicador = '<div class="indicador aviso">La fecha "Desde" es posterior a la fecha "Hasta". Corrige el rango.</div>';
+            } else if (sinFechas) {
+                indicador = '<div class="indicador aviso">Los registros no tienen fecha legible, se muestran todos (' + todos.length + ').</div>';
+            } else {
+                indicador = '<div class="indicador">Mostrando ' + datos.length + ' de ' + todos.length +
+                    ' registros de ' + maquinaActual + ', ' + textoRango + '</div>';
+            }
+
+            // ---- Tarjetas (siempre el último registro de la máquina) ----
+            const vars = VARIABLES.filter(v => v.key !== 'alcohol' || cfg.alcohol.aplica);
+            const evals = {};
+            vars.forEach(v => { evals[v.key] = evaluarSemaforo(ultimo[v.key], cfg[v.key]); });
+
+            const rojos = vars.filter(v => evals[v.key].clase === 'red').map(v => v.titulo);
+            const amarillos = vars.filter(v => evals[v.key].clase === 'yellow').map(v => v.titulo);
+            let banner;
+            if (rojos.length) banner = '<div class="alert-banner bad">Fuera de rango: ' + rojos.join(', ') + '. Se requiere corrección.</div>';
+            else if (amarillos.length) banner = '<div class="alert-banner warn">Cerca del límite: ' + amarillos.join(', ') + '. Conviene vigilar.</div>';
+            else banner = '<div class="alert-banner ok">Todas las variables están dentro del rango ideal.</div>';
+
+            let html = banner +
+                '<div class="section-title">Último registro - ' + maquinaActual + ' (' + (ultimo.fechaTxt || 'Reciente') + ')</div>' +
+                '<div class="metrics-grid">';
+
+            vars.forEach(v => {
+                const e = evals[v.key];
+                const c = cfg[v.key];
+                const val = ultimo[v.key];
+                html += '<div class="metric-card card-' + e.clase + '">' +
+                    '<div class="metric-title">' + v.titulo + (v.unidad ? ' (' + v.unidad.trim() + ')' : '') + '</div>' +
+                    '<div class="metric-value">' + formatear(val) + '</div>' +
+                    '<div class="metric-range">Rango: ' + c.min + ' - ' + c.max + (v.unidad ? v.unidad : '') + '</div>' +
+                    '<div class="metric-status status-' + e.clase + '">' + e.texto + '</div></div>';
+            });
+
+            html += '</div><div class="section-title">Gráficas de tendencia y límites operativos</div>' + indicador;
+
+            if (datos.length === 0) {
+                if (!rangoInvalido) {
+                    html += '<div class="no-data-msg">No hay registros de ' + maquinaActual + ' en el rango de fechas elegido. Prueba con otro rango o pulsa "Todo".</div>';
+                }
+                contenedor.innerHTML = html;
+                return;
+            }
+
+            html += '<div class="charts-grid">';
+            vars.forEach(v => { html += '<div class="chart-card"><canvas id="grafica_' + v.key + '"></canvas></div>'; });
+            html += '</div>';
+            contenedor.innerHTML = html;
+
+            const labels = datos.map(etiquetaFecha);
+            vars.forEach(v => dibujarGrafica(v, cfg[v.key], labels, datos.map(d => d[v.key])));
+        }
+
+        function dibujarGrafica(v, c, labels, valores) {
+            const n = labels.length;
+            const lineaFija = (valor, nombre) => ({
+                label: nombre, data: Array(n).fill(valor), borderColor: '#f56565',
+                borderWidth: 1, pointRadius: 0, fill: false
+            });
+            chartsInstance[v.key] = new Chart(document.getElementById('grafica_' + v.key).getContext('2d'), {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        { label: v.titulo + ' real', data: valores, borderColor: v.color, backgroundColor: v.fondo,
+                          borderWidth: 2, fill: true, tension: 0.2, spanGaps: false, pointRadius: n > 40 ? 1.5 : 3 },
+                        { label: 'Tendencia', data: calcularTendencia(valores), borderColor: '#d69e2e',
+                          borderDash: [5, 5], borderWidth: 2, pointRadius: 0, fill: false },
+                        lineaFija(c.max, 'Límite máx'),
+                        lineaFija(c.min, 'Límite mín')
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: {
+                        title: { display: true, text: v.titulo + ' (rango: ' + c.min + ' - ' + c.max + v.unidad + ')' }
+                    },
+                    scales: { x: { ticks: { maxTicksLimit: 8, maxRotation: 0 } } }
+                }
+            });
+        }
+
+        // ================= EVENTOS =================
+        function seleccionarMaquina(maquina) {
+            maquinaActual = maquina;
+            document.querySelectorAll('.machine-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.maquina === maquina);
+            });
+            renderizarTablero();
+        }
+
+        function crearMenu() {
+            const menu = document.getElementById('menuMaquinas');
+            MAQUINAS.forEach(m => {
+                const b = document.createElement('button');
+                b.type = 'button';
+                b.className = 'machine-btn' + (m === maquinaActual ? ' active' : '');
+                b.dataset.maquina = m;
+                b.textContent = m;
+                b.addEventListener('click', () => seleccionarMaquina(m));
+                menu.appendChild(b);
+            });
+        }
+
+        crearMenu();
+        document.getElementById('fechaDesde').addEventListener('change', renderizarTablero);
+        document.getElementById('fechaHasta').addEventListener('change', renderizarTablero);
+        document.querySelectorAll('[data-preset]').forEach(b => {
+            b.addEventListener('click', () => aplicarPreset(b.dataset.preset));
+        });
+        document.getElementById('btnActualizar').addEventListener('click', cargarDatos);
+        cargarDatos();
+        setInterval(cargarDatos, ACTUALIZAR_CADA_MS);
+    </script>
+</body>
+</html>
