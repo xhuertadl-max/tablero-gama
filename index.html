@@ -133,7 +133,7 @@
         }
         .btn-ultimo:hover { border-color: var(--secondary); background: #eff6ff; }
 
-        .medidores-nav { display: flex; align-items: stretch; gap: 12px; margin-bottom: 35px; }
+        .medidores-nav { display: flex; align-items: stretch; gap: 12px; margin-bottom: 20px; }
         .medidores-nav .metrics-grid { flex: 1; min-width: 0; margin-bottom: 0; }
         .flecha {
             flex: 0 0 44px; display: flex; align-items: center; justify-content: center;
@@ -148,6 +148,15 @@
             .flecha { flex-basis: 36px; align-items: flex-start; }
             .flecha svg { position: sticky; top: 45vh; margin-top: 16px; }
         }
+
+        .comentario-box {
+            background: var(--card-bg); padding: 16px 20px; border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,.05); border-left: 6px solid var(--secondary);
+            margin-bottom: 35px;
+        }
+        .comentario-titulo { font-size: .95rem; color: var(--text-muted); font-weight: 600; text-transform: uppercase; margin-bottom: 8px; }
+        .comentario-texto { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.5; }
+        .comentario-vacio { color: var(--text-muted); font-style: italic; }
 
         .charts-grid {
             display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 480px), 1fr));
@@ -362,6 +371,8 @@
             const cMaq = col('Máquina'), cFecha = col('Marca temporal');
             const cCond = col('Conductividad'), cPh = col('pH');
             const cTemp = col('Temperatura'), cAlc = col('Alcohol');
+            // El nombre completo puede variar ("Comentario adicional (opcional)", etc.): basta con que empiece con "comentario"
+            const cCom = campos.find(c => normalizar(c).startsWith('comentario'));
 
             if (!cMaq) throw new Error('No se encontró la columna "Máquina". Columnas detectadas: ' + campos.join(', '));
 
@@ -373,7 +384,8 @@
                 conductividad: cCond ? parseNumero(f[cCond]) : null,
                 ph: cPh ? parseNumero(f[cPh]) : null,
                 temperatura: cTemp ? parseNumero(f[cTemp]) : null,
-                alcohol: cAlc ? parseNumero(f[cAlc]) : null
+                alcohol: cAlc ? parseNumero(f[cAlc]) : null,
+                comentario: cCom ? String(f[cCom] || '').trim() : ''
             })).filter(r => r.maquina);
 
             limpias.sort((a, b) => {
@@ -572,6 +584,12 @@
 
             html += '</div>' +
                     '<button type="button" class="flecha" data-nav="1" title="Registro siguiente (más reciente)" aria-label="Registro siguiente"' + (esUltimo ? ' disabled' : '') + '>' + ICONO_DER + '</button>' +
+                '</div>' +
+                '<div class="comentario-box">' +
+                    '<div class="comentario-titulo">Comentario (opcional)</div>' +
+                    (actual.comentario
+                        ? '<div class="comentario-texto">' + esc(actual.comentario) + '</div>'
+                        : '<div class="comentario-vacio">Sin comentario en este registro.</div>') +
                 '</div>';
             zona.innerHTML = html;
 
