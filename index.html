@@ -27,16 +27,18 @@
             padding: 20px;
         }
         header {
-            display: flex; align-items: center; justify-content: space-between;
-            gap: 16px; max-width: 1300px; margin: 0 auto 20px auto;
+            display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+            align-items: center; gap: 16px;
+            max-width: 1300px; margin: 0 auto 20px auto;
         }
-        .header-titulo { flex: 1; text-align: center; }
-        .logo-izq { height: 64px; width: auto; max-width: 30%; object-fit: contain; flex: 0 0 auto; }
-        .logo-der { height: 84px; width: auto; max-width: 20%; object-fit: contain; flex: 0 0 auto; }
+        .header-titulo { text-align: center; }
+        .logo-izq { height: 64px; width: auto; max-width: 100%; object-fit: contain; justify-self: start; }
+        .logo-der { height: 84px; width: auto; max-width: 100%; object-fit: contain; justify-self: end; }
         @media (max-width: 700px) {
-            header { gap: 8px; }
-            .logo-izq { height: 36px; }
-            .logo-der { height: 48px; }
+            header { grid-template-columns: 1fr 1fr; gap: 8px 12px; }
+            .logo-izq { height: 40px; grid-row: 1; grid-column: 1; }
+            .logo-der { height: 52px; grid-row: 1; grid-column: 2; }
+            .header-titulo { grid-row: 2; grid-column: 1 / -1; }
             h1 { font-size: 1.3rem; }
             .subtitle { font-size: .9rem; }
         }
