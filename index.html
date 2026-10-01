@@ -122,6 +122,33 @@
         .status-red { background: #fee2e2; color: #991b1b; }
         .status-na { background: #f1f5f9; color: #475569; }
 
+        .registro-info {
+            display: flex; align-items: center; flex-wrap: wrap; gap: 10px;
+            margin: -5px 0 14px 0; font-size: .9rem; color: var(--text-muted);
+        }
+        .registro-info.pasado .texto-pasado { color: #92400e; font-weight: 600; }
+        .btn-ultimo {
+            padding: 5px 12px; border: 1px solid #cbd5e1; border-radius: 6px; background: white;
+            font-size: .85rem; font-family: inherit; cursor: pointer; color: var(--primary); font-weight: 600;
+        }
+        .btn-ultimo:hover { border-color: var(--secondary); background: #eff6ff; }
+
+        .medidores-nav { display: flex; align-items: stretch; gap: 12px; margin-bottom: 35px; }
+        .medidores-nav .metrics-grid { flex: 1; min-width: 0; margin-bottom: 0; }
+        .flecha {
+            flex: 0 0 44px; display: flex; align-items: center; justify-content: center;
+            background: white; border: 2px solid #cbd5e1; border-radius: 10px; color: var(--primary);
+            cursor: pointer; padding: 0; transition: all .2s ease; box-shadow: 0 2px 4px rgba(0,0,0,.05);
+        }
+        .flecha:hover:not(:disabled) { border-color: var(--secondary); background: #eff6ff; }
+        .flecha:disabled { opacity: .35; cursor: not-allowed; box-shadow: none; }
+        .flecha:focus-visible, .btn-ultimo:focus-visible { outline: 3px solid var(--secondary); outline-offset: 2px; }
+        @media (max-width: 700px) {
+            .medidores-nav { gap: 8px; }
+            .flecha { flex-basis: 36px; align-items: flex-start; }
+            .flecha svg { position: sticky; top: 45vh; margin-top: 16px; }
+        }
+
         .charts-grid {
             display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 480px), 1fr));
             gap: 25px;
@@ -213,10 +240,12 @@
         let maquinaActual = MAQUINAS[0];
         let chartsInstance = {};
         let rangoInicializado = false;
+        let registroElegido = null; // 'orden' del registro que se muestra en los medidores; null = el último
 
         // ================= UTILIDADES =================
         const normalizar = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
         const p2 = n => String(n).padStart(2, '0');
+        const esc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
         function parseNumero(v) {
             if (v === null || v === undefined) return null;
@@ -419,7 +448,6 @@
             }
 
             const cfg = limitesConfig[maquinaActual];
-            const ultimo = todos[todos.length - 1];
 
             // ---- Filtro por rango de fechas ----
             const { desde, hasta, vD, vH } = leerRango();
@@ -449,10 +477,69 @@
                     ' registros de ' + maquinaActual + ', ' + textoRango + '</div>';
             }
 
-            // ---- Tarjetas (siempre el último registro de la máquina) ----
+            // ---- Medidores: se dibujan aparte (renderizarMedidores) para poder navegar sin tocar las gráficas ----
+            const vars = VARIABLES.filter(v => v.key !== 'alcohol' || cfg.alcohol.aplica);
+            let html = '<div id="zonaMedidores"></div>' +
+                '<div class="section-title">Gráficas de tendencia y límites operativos</div>' + indicador;
+
+            if (datos.length === 0) {
+                if (!rangoInvalido) {
+                    html += '<div class="no-data-msg">No hay registros de ' + maquinaActual + ' en el rango de fechas elegido. Prueba con otro rango o pulsa "Todo".</div>';
+                }
+                contenedor.innerHTML = html;
+                renderizarMedidores();
+                return;
+            }
+
+            html += '<div class="charts-grid">';
+            vars.forEach(v => { html += '<div class="chart-card"><canvas id="grafica_' + v.key + '"></canvas></div>'; });
+            html += '</div>';
+            contenedor.innerHTML = html;
+            renderizarMedidores();
+
+            const labels = datos.map(etiquetaFecha);
+            vars.forEach(v => dibujarGrafica(v, cfg[v.key], labels, datos.map(d => d[v.key])));
+        }
+
+        // ================= MEDIDORES (con navegación entre registros) =================
+        function registrosDeMaquina() {
+            return registros.filter(r => r.maquina === maquinaActual.toUpperCase());
+        }
+
+        function indiceElegido(todos) {
+            if (registroElegido === null) return todos.length - 1;
+            const i = todos.findIndex(r => r.orden === registroElegido);
+            if (i === -1) { registroElegido = null; return todos.length - 1; }
+            return i;
+        }
+
+        // dir: -1 = registro anterior (más antiguo), 1 = siguiente (más reciente), 'ultimo' = el más reciente
+        function navegarRegistro(dir) {
+            const todos = registrosDeMaquina();
+            if (!todos.length) return;
+            let i = indiceElegido(todos);
+            i = dir === 'ultimo' ? todos.length - 1 : Math.min(todos.length - 1, Math.max(0, i + dir));
+            registroElegido = (i === todos.length - 1) ? null : todos[i].orden;
+            renderizarMedidores(dir);
+        }
+
+        const ICONO_IZQ = '<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 5 8 12 15 19"/></svg>';
+        const ICONO_DER = '<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 5 16 12 9 19"/></svg>';
+
+        function renderizarMedidores(dirNavegada) {
+            const zona = document.getElementById('zonaMedidores');
+            if (!zona) return;
+            const todos = registrosDeMaquina();
+            if (!todos.length) { zona.innerHTML = ''; return; }
+
+            const cfg = limitesConfig[maquinaActual];
+            const i = indiceElegido(todos);
+            const actual = todos[i];
+            const esUltimo = i === todos.length - 1;
+
             const vars = VARIABLES.filter(v => v.key !== 'alcohol' || cfg.alcohol.aplica);
             const evals = {};
-            vars.forEach(v => { evals[v.key] = evaluarSemaforo(ultimo[v.key], cfg[v.key]); });
+            vars.forEach(v => { evals[v.key] = evaluarSemaforo(actual[v.key], cfg[v.key]); });
 
             const rojos = vars.filter(v => evals[v.key].clase === 'red').map(v => v.titulo);
             const amarillos = vars.filter(v => evals[v.key].clase === 'yellow').map(v => v.titulo);
@@ -462,37 +549,38 @@
             else banner = '<div class="alert-banner ok">Todas las variables están dentro del rango ideal.</div>';
 
             let html = banner +
-                '<div class="section-title">Último registro - ' + maquinaActual + ' (' + (ultimo.fechaTxt || 'Reciente') + ')</div>' +
-                '<div class="metrics-grid">';
+                '<div class="section-title">' + (esUltimo ? 'Último registro' : 'Registro anterior') + ' - ' + maquinaActual +
+                ' (' + esc(actual.fechaTxt || 'Reciente') + ')</div>' +
+                '<div class="registro-info' + (esUltimo ? '' : ' pasado') + '">' +
+                    '<span>Registro ' + (i + 1) + ' de ' + todos.length + '</span>' +
+                    (esUltimo ? '' : '<span class="texto-pasado">Estás viendo un registro anterior</span>' +
+                        '<button type="button" class="btn-ultimo" data-nav="ultimo">Volver al último</button>') +
+                '</div>' +
+                '<div class="medidores-nav">' +
+                    '<button type="button" class="flecha" data-nav="-1" title="Registro anterior (más antiguo)" aria-label="Registro anterior"' + (i === 0 ? ' disabled' : '') + '>' + ICONO_IZQ + '</button>' +
+                    '<div class="metrics-grid">';
 
             vars.forEach(v => {
                 const e = evals[v.key];
                 const c = cfg[v.key];
-                const val = ultimo[v.key];
                 html += '<div class="metric-card card-' + e.clase + '">' +
                     '<div class="metric-title">' + v.titulo + (v.unidad ? ' (' + v.unidad.trim() + ')' : '') + '</div>' +
-                    '<div class="metric-value">' + formatear(val) + '</div>' +
+                    '<div class="metric-value">' + formatear(actual[v.key]) + '</div>' +
                     '<div class="metric-range">Rango: ' + c.min + ' - ' + c.max + (v.unidad ? v.unidad : '') + '</div>' +
                     '<div class="metric-status status-' + e.clase + '">' + e.texto + '</div></div>';
             });
 
-            html += '</div><div class="section-title">Gráficas de tendencia y límites operativos</div>' + indicador;
+            html += '</div>' +
+                    '<button type="button" class="flecha" data-nav="1" title="Registro siguiente (más reciente)" aria-label="Registro siguiente"' + (esUltimo ? ' disabled' : '') + '>' + ICONO_DER + '</button>' +
+                '</div>';
+            zona.innerHTML = html;
 
-            if (datos.length === 0) {
-                if (!rangoInvalido) {
-                    html += '<div class="no-data-msg">No hay registros de ' + maquinaActual + ' en el rango de fechas elegido. Prueba con otro rango o pulsa "Todo".</div>';
-                }
-                contenedor.innerHTML = html;
-                return;
+            // Conserva el foco del teclado tras redibujar
+            if (dirNavegada !== undefined) {
+                let objetivo = zona.querySelector('[data-nav="' + dirNavegada + '"]');
+                if (!objetivo || objetivo.disabled) objetivo = zona.querySelector('.flecha:not(:disabled)');
+                if (objetivo) objetivo.focus();
             }
-
-            html += '<div class="charts-grid">';
-            vars.forEach(v => { html += '<div class="chart-card"><canvas id="grafica_' + v.key + '"></canvas></div>'; });
-            html += '</div>';
-            contenedor.innerHTML = html;
-
-            const labels = datos.map(etiquetaFecha);
-            vars.forEach(v => dibujarGrafica(v, cfg[v.key], labels, datos.map(d => d[v.key])));
         }
 
         function dibujarGrafica(v, c, labels, valores) {
@@ -529,6 +617,7 @@
         // ================= EVENTOS =================
         function seleccionarMaquina(maquina) {
             maquinaActual = maquina;
+            registroElegido = null;
             document.querySelectorAll('.machine-btn').forEach(btn => {
                 btn.classList.toggle('active', btn.dataset.maquina === maquina);
             });
@@ -555,6 +644,12 @@
             b.addEventListener('click', () => aplicarPreset(b.dataset.preset));
         });
         document.getElementById('btnActualizar').addEventListener('click', cargarDatos);
+        document.getElementById('contenidoTablero').addEventListener('click', e => {
+            const b = e.target.closest('[data-nav]');
+            if (!b || b.disabled) return;
+            const d = b.dataset.nav;
+            navegarRegistro(d === 'ultimo' ? 'ultimo' : parseInt(d, 10));
+        });
         cargarDatos();
         setInterval(cargarDatos, ACTUALIZAR_CADA_MS);
     </script>
