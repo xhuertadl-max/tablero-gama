@@ -218,31 +218,41 @@
         const ACTUALIZAR_CADA_MS = 5 * 60 * 1000; // 5 minutos
         const DIAS_RANGO_INICIAL = 30;
 
-        const MAQUINAS = ['XL-106', 'XL-10', 'R-506', 'R-707', 'R-709'];
+        const MAQUINAS = ['XL-106', 'XL-10', 'R-506', 'R-707', 'R-709', 'Ósmosis'];
 
-        const RANGOS_XL = {
-            conductividad: { min: 1400, max: 1800, warnMin: 1450, warnMax: 1750 },
-            ph:            { min: 4.8,  max: 5.2,  warnMin: 4.85, warnMax: 5.15 },
-            temperatura:   { min: 10,   max: 14,   warnMin: 10.5, warnMax: 13.5 },
-            alcohol:       { aplica: false }
+        // Mismos rangos para las 5 prensas; el alcohol solo aplica a las R.
+        // Una variable con { aplica: false } no se muestra (ni medidor ni gráfica) en esa máquina.
+        const NO_APLICA = { aplica: false };
+        const RANGOS_COMUNES = {
+            conductividad: { min: 1400, max: 2000, warnMin: 1450, warnMax: 1950 },
+            ph:            { min: 4.5,  max: 5.5,  warnMin: 4.6,  warnMax: 5.4 },
+            temperatura:   { min: 10,   max: 14,   warnMin: 10.5, warnMax: 13.5 }
         };
-        const RANGOS_R = {
-            conductividad: { min: 1200, max: 1700, warnMin: 1250, warnMax: 1650 },
-            ph:            { min: 4.9,  max: 5.5,  warnMin: 5.0,  warnMax: 5.4 },
-            temperatura:   { min: 10,   max: 14,   warnMin: 10.5, warnMax: 13.5 },
-            alcohol:       { min: 4,    max: 6,    warnMin: 4.2,  warnMax: 5.8, aplica: true }
+        const RANGOS_SIN_ALCOHOL = { ...RANGOS_COMUNES, alcohol: NO_APLICA, ppm: NO_APLICA };
+        const RANGOS_CON_ALCOHOL = { ...RANGOS_COMUNES, alcohol: { min: 4, max: 6, warnMin: 4.2, warnMax: 5.8 }, ppm: NO_APLICA };
+        // Ósmosis: conductividad, pH y partes por millón (sin temperatura ni alcohol)
+        const RANGOS_OSMOSIS = {
+            conductividad: { min: 300, max: 450, warnMin: 315, warnMax: 435 },
+            ph:            { min: 5.8, max: 7,   warnMin: 5.9, warnMax: 6.9 },
+            temperatura:   NO_APLICA,
+            alcohol:       NO_APLICA,
+            ppm:           { min: 120, max: 200, warnMin: 128, warnMax: 192 }
         };
         const limitesConfig = {
-            'XL-106': RANGOS_XL, 'XL-10': RANGOS_XL,
-            'R-506': RANGOS_R, 'R-707': RANGOS_R, 'R-709': RANGOS_R
+            'XL-106': RANGOS_SIN_ALCOHOL, 'XL-10': RANGOS_SIN_ALCOHOL,
+            'R-506': RANGOS_CON_ALCOHOL, 'R-707': RANGOS_CON_ALCOHOL, 'R-709': RANGOS_CON_ALCOHOL,
+            'Ósmosis': RANGOS_OSMOSIS
         };
 
         const VARIABLES = [
             { key: 'conductividad', titulo: 'Conductividad', unidad: '',    color: '#3182ce', fondo: 'rgba(49,130,206,.10)' },
             { key: 'ph',            titulo: 'pH',            unidad: '',    color: '#38a169', fondo: 'rgba(56,161,105,.10)' },
             { key: 'temperatura',   titulo: 'Temperatura',   unidad: ' °C', color: '#e53e3e', fondo: 'rgba(229,62,62,.10)' },
-            { key: 'alcohol',       titulo: 'Alcohol',       unidad: ' %',  color: '#805ad5', fondo: 'rgba(128,90,213,.10)' }
+            { key: 'alcohol',       titulo: 'Alcohol',       unidad: ' %',  color: '#805ad5', fondo: 'rgba(128,90,213,.10)' },
+            { key: 'ppm',           titulo: 'Partes por millón', unidad: ' ppm', color: '#dd6b20', fondo: 'rgba(221,107,32,.10)' }
         ];
+        // Variables que aplican a una máquina según su configuración
+        const variablesDe = cfg => VARIABLES.filter(v => cfg[v.key] && cfg[v.key].aplica !== false);
 
         // ================= ESTADO =================
         let registros = [];
@@ -371,6 +381,8 @@
             const cMaq = col('Máquina'), cFecha = col('Marca temporal');
             const cCond = col('Conductividad'), cPh = col('pH');
             const cTemp = col('Temperatura'), cAlc = col('Alcohol');
+            // Partes por millón: acepta "Partes por millón", "Partes por millón (ppm)", "PPM", etc.
+            const cPpm = campos.find(c => { const n = normalizar(c); return n.startsWith('partes por mill') || n.startsWith('ppm'); });
             // El nombre completo puede variar ("Comentario adicional (opcional)", etc.): basta con que empiece con "comentario"
             const cCom = campos.find(c => normalizar(c).startsWith('comentario'));
 
@@ -378,13 +390,14 @@
 
             const limpias = filas.map((f, i) => ({
                 orden: i,
-                maquina: String(f[cMaq] || '').trim().toUpperCase(),
+                maquina: normalizar(f[cMaq]),
                 fechaTxt: cFecha ? f[cFecha] : '',
                 fecha: cFecha ? parseFecha(f[cFecha]) : null,
                 conductividad: cCond ? parseNumero(f[cCond]) : null,
                 ph: cPh ? parseNumero(f[cPh]) : null,
                 temperatura: cTemp ? parseNumero(f[cTemp]) : null,
                 alcohol: cAlc ? parseNumero(f[cAlc]) : null,
+                ppm: cPpm ? parseNumero(f[cPpm]) : null,
                 comentario: cCom ? String(f[cCom] || '').trim() : ''
             })).filter(r => r.maquina);
 
@@ -452,7 +465,7 @@
             chartsInstance = {};
 
             const contenedor = document.getElementById('contenidoTablero');
-            const todos = registros.filter(r => r.maquina === maquinaActual.toUpperCase());
+            const todos = registros.filter(r => r.maquina === normalizar(maquinaActual));
 
             if (todos.length === 0) {
                 contenedor.innerHTML = '<div class="no-data-msg">No hay registros para la máquina ' + maquinaActual + '.</div>';
@@ -490,7 +503,7 @@
             }
 
             // ---- Medidores: se dibujan aparte (renderizarMedidores) para poder navegar sin tocar las gráficas ----
-            const vars = VARIABLES.filter(v => v.key !== 'alcohol' || cfg.alcohol.aplica);
+            const vars = variablesDe(cfg);
             let html = '<div id="zonaMedidores"></div>' +
                 '<div class="section-title">Gráficas de tendencia y límites operativos</div>' + indicador;
 
@@ -515,7 +528,7 @@
 
         // ================= MEDIDORES (con navegación entre registros) =================
         function registrosDeMaquina() {
-            return registros.filter(r => r.maquina === maquinaActual.toUpperCase());
+            return registros.filter(r => r.maquina === normalizar(maquinaActual));
         }
 
         function indiceElegido(todos) {
@@ -549,7 +562,7 @@
             const actual = todos[i];
             const esUltimo = i === todos.length - 1;
 
-            const vars = VARIABLES.filter(v => v.key !== 'alcohol' || cfg.alcohol.aplica);
+            const vars = variablesDe(cfg);
             const evals = {};
             vars.forEach(v => { evals[v.key] = evaluarSemaforo(actual[v.key], cfg[v.key]); });
 
